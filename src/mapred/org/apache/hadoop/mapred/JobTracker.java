@@ -114,6 +114,11 @@ import org.apache.hadoop.util.ServicePlugin;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.VersionInfo;
 import org.mortbay.util.ajax.JSON;
+import org.ucare.cpn.annotations.AbstractSharedData;
+import org.ucare.cpn.annotations.DirectParent;
+import org.ucare.cpn.annotations.EntryPoint;
+import org.ucare.cpn.annotations.LookupPoint;
+import org.ucare.cpn.annotations.PatternBlock;
 
 /*******************************************************
  * JobTracker is the central location for submitting and 
@@ -2926,6 +2931,12 @@ public class JobTracker implements MRConstants, InterTrackerProtocol,
    * {@link TaskTracker} and responds with instructions to start/stop 
    * tasks or jobs, and also 'reset' instructions during contingencies. 
    */
+  @EntryPoint
+  @PatternBlock(path="patterns/pt-SpecExec_v1.cpn")
+  @DirectParent(signatures={"org.apache.hadoop.mapred.TaskTracker$TaskInProgress.launchTask",
+      "org.apache.hadoop.mapred.TaskTracker$TaskInProgress.reportProgress"}, isJump=true)
+  @LookupPoint(isAtomic=true, isVoid = true, defColor="TASKxPROGRESS", defVar="tstatus")
+  @AbstractSharedData(dataName="Task", type="set", accessTime="end")
   public synchronized HeartbeatResponse heartbeat(TaskTrackerStatus status, 
                                                   boolean restarted,
                                                   boolean initialContact,
