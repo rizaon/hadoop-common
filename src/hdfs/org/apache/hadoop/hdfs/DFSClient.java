@@ -49,8 +49,11 @@ import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.SecretManager.InvalidToken;
 import org.apache.hadoop.security.token.TokenRenewer;
 import org.apache.hadoop.util.*;
-
 import org.apache.commons.logging.*;
+import org.ucare.cpn.annotations.AbstractSharedData;
+import org.ucare.cpn.annotations.DirectParent;
+import org.ucare.cpn.annotations.LookupPoint;
+import org.ucare.cpn.annotations.PatternBlock;
 
 import java.io.*;
 import java.net.*;
@@ -689,6 +692,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
     return hints;
   }
 
+  //@LookupPoint
   static LocatedBlocks callGetBlockLocations(ClientProtocol namenode,
       String src, long start, long length) throws IOException {
     try {
@@ -727,6 +731,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
    * inner subclass of InputStream that does the right out-of-band
    * work.
    */
+  //@LookupPoint
   public DFSInputStream open(String src, int buffersize, boolean verifyChecksum,
                       FileSystem.Statistics stats
       ) throws IOException {
@@ -1516,6 +1521,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
    * Pick the best node from which to stream the data.
    * Entries in <i>nodes</i> are already in the priority order
    */
+  //@LookupPoint(isAtomic=true, defColor="PIDxSPLITLOCS", defVar="(pid, locs)")
   private DatanodeInfo bestNode(DatanodeInfo nodes[], 
                                 AbstractMap<DatanodeInfo, DatanodeInfo> deadNodes)
                                 throws IOException {
@@ -1572,6 +1578,10 @@ public class DFSClient implements FSConstants, java.io.Closeable {
      * the checksum.
      */
     @Override
+    @PatternBlock(path="patterns/pt-DataRead_v1.cpn")
+    @LookupPoint(isAtomic=true, defColor="MSG", defVar="(loc,tt,ReadAns)")
+    //least common ancestor
+    //@DirectParent(signatures={"org.apache.hadoop.hdfs.DFSClient$DFSInputStream.blockSeekTo"})
     public synchronized int read(byte[] buf, int off, int len) 
                                  throws IOException {
       
@@ -1958,6 +1968,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
       deadNodes.put(dnInfo, dnInfo);
     }
     
+    //@LookupPoint
     DFSInputStream(String src, int buffersize, boolean verifyChecksum
                    ) throws IOException {
       this.verifyChecksum = verifyChecksum;
@@ -2131,6 +2142,10 @@ public class DFSClient implements FSConstants, java.io.Closeable {
      * @return located block
      * @throws IOException
      */
+    @LookupPoint(defColor="PIDxSPLITLOCS", defVar="((tt, task),locs)")
+    @AbstractSharedData(dataName = "All Locs", type = "update", accessTime="end")
+    //least common ancestor
+    @DirectParent(signatures={"org.apache.hadoop.hdfs.DFSClient$DFSInputStream.blockSeekTo"})
     private synchronized LocatedBlock getBlockAt(long offset,
         boolean updatePosition) throws IOException {
       assert (locatedBlocks != null) : "locatedBlocks is null";
@@ -2221,6 +2236,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
      * Open a DataInputStream to a DataNode so that it can be read from.
      * We get block ID and the IDs of the destinations at startup, from the namenode.
      */
+    //@LookupPoint
     private synchronized DatanodeInfo blockSeekTo(long target) throws IOException {
       if (target >= getFileLength()) {
         throw new IOException("Attempted to read past end of file");
@@ -2399,7 +2415,9 @@ public class DFSClient implements FSConstants, java.io.Closeable {
     /**
      * Read the entire buffer.
      */
+    //@LookupPoint
     @Override
+    //@DirectParent(signatures={"org.apache.hadoop.mapred.MapTask.getSplitDetails"})
     public synchronized int read(byte buf[], int off, int len) throws IOException {
       checkOpen();
       if (closed) {
@@ -2444,7 +2462,10 @@ public class DFSClient implements FSConstants, java.io.Closeable {
       return -1;
     }
 
-        
+    @PatternBlock(path="patterns/pt-DataNodeSelection_v1.cpn")
+    @LookupPoint(defColor="PIDxNODE", defVar="((tt,task),loc)")
+    //least common ancestor
+    //@DirectParent(signatures={"org.apache.hadoop.hdfs.DFSClient$DFSInputStream.blockSeekTo"})
     private DNAddrPair chooseDataNode(LocatedBlock block)
       throws IOException {
       while (true) {
@@ -2479,6 +2500,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
       }
     } 
         
+    //@LookupPoint
     private void fetchBlockByteRange(LocatedBlock block, long start,
                                      long end, byte[] buf, int offset) throws IOException {
       //
@@ -2622,6 +2644,7 @@ public class DFSClient implements FSConstants, java.io.Closeable {
      * Seek to a new arbitrary location
      */
     @Override
+    //@LookupPoint
     public synchronized void seek(long targetPos) throws IOException {
       if (targetPos > getFileLength()) {
         throw new IOException("Cannot seek after EOF");

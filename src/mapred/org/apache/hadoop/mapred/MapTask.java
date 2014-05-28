@@ -48,6 +48,10 @@ import org.apache.hadoop.fs.FileSystem.Statistics;
 import org.apache.hadoop.fs.LocalDirAllocator;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.DFSClient.DFSDataInputStream;
+import org.apache.hadoop.hdfs.DFSClient.DFSInputStream;
+import org.apache.hadoop.hdfs.DFSClient;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.io.RawComparator;
 import org.apache.hadoop.io.SequenceFile;
@@ -69,6 +73,7 @@ import org.apache.hadoop.util.Progress;
 import org.apache.hadoop.util.QuickSort;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.StringUtils;
+import org.ucare.cpn.annotations.LookupPoint;
 
 /** A Map task. */
 class MapTask extends Task {
@@ -361,17 +366,30 @@ class MapTask extends Task {
     }
 
     if (useNewApi) {
-      runNewMapper(job, splitMetaInfo, umbilical, reporter);
+      // riza: right now, focus on oldMapper, comment the new one
+      // runNewMapper(job, splitMetaInfo, umbilical, reporter);
     } else {
       runOldMapper(job, splitMetaInfo, umbilical, reporter);
     }
     done(umbilical, reporter);
   }
+  @LookupPoint(defColor="PID", defVar="(tt, task)")
   @SuppressWarnings("unchecked")
   private <T> T getSplitDetails(Path file, long offset)
    throws IOException {
-    FileSystem fs = file.getFileSystem(conf);
-    FSDataInputStream inFile = fs.open(file);
+	  byte[] buff = new byte[100];
+
+   // riza: hack to call DistributedFileSystem
+		if ("a".equals("b")) {
+			//DistributedFileSystem fs = new DistributedFileSystem();
+			//FSDataInputStream inFile = fs.open(null);
+			DFSClient dfs = new DFSClient(null);
+			DFSInputStream ins = dfs.open("");
+			ins.read(buff, 10, 100);
+		}
+		
+	FileSystem fs = file.getFileSystem(conf);
+	FSDataInputStream inFile = fs.open(file);
     inFile.seek(offset);
     String className = Text.readString(inFile);
     Class<T> cls;
@@ -395,6 +413,7 @@ class MapTask extends Task {
     return split;
   }
   
+  @LookupPoint(defColor="PID", defVar="(tt, task)")
   @SuppressWarnings("unchecked")
   private <INKEY,INVALUE,OUTKEY,OUTVALUE>
   void runOldMapper(final JobConf job,
@@ -427,6 +446,14 @@ class MapTask extends Task {
       ReflectionUtils.newInstance(job.getMapRunnerClass(), job);
 
     try {
+    	// riza: hack to MapRunner
+        if ("a".equals("b")){
+        	TaskTracker tt = new TaskTracker();
+        	tt.statusUpdate(getTaskID(), taskStatus, jvmContext);
+        	MapRunner<INKEY,INVALUE,OUTKEY,OUTVALUE> mr = new MapRunner<INKEY,INVALUE,OUTKEY,OUTVALUE>();
+        	mr.run(in, new OldOutputCollector(collector, conf), reporter);
+        }
+        
       runner.run(in, new OldOutputCollector(collector, conf), reporter);
       collector.flush();
       

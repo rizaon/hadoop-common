@@ -30,12 +30,14 @@ import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableUtils;
+import org.ucare.cpn.annotations.*;
 
 /**
  * The response sent by the {@link JobTracker} to the hearbeat sent
  * periodically by the {@link TaskTracker}
  * 
  */
+@TokenClass
 class HeartbeatResponse implements Writable, Configurable {
   Configuration conf = null;
   short responseId;

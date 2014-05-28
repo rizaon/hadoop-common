@@ -38,11 +38,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.Vector;
-import java.util.Map.Entry;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -55,14 +55,13 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.xml.ws.ServiceMode;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.TaskDistributedCacheManager;
 import org.apache.hadoop.filecache.TrackerDistributedCacheManager;
-import org.apache.hadoop.mapreduce.server.tasktracker.*;
-import org.apache.hadoop.mapreduce.server.tasktracker.userlogs.*;
 import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.fs.DF;
 import org.apache.hadoop.fs.FileStatus;
@@ -89,29 +88,36 @@ import org.apache.hadoop.mapred.TaskTrackerStatus.TaskTrackerHealthStatus;
 import org.apache.hadoop.mapred.pipes.Submitter;
 import org.apache.hadoop.mapreduce.TaskType;
 import org.apache.hadoop.mapreduce.security.SecureShuffleUtils;
+import org.apache.hadoop.mapreduce.security.TokenCache;
 import org.apache.hadoop.mapreduce.security.token.JobTokenIdentifier;
 import org.apache.hadoop.mapreduce.security.token.JobTokenSecretManager;
+import org.apache.hadoop.mapreduce.server.tasktracker.JVMInfo;
+import org.apache.hadoop.mapreduce.server.tasktracker.Localizer;
+import org.apache.hadoop.mapreduce.server.tasktracker.userlogs.JobCompletedEvent;
+import org.apache.hadoop.mapreduce.server.tasktracker.userlogs.JobStartedEvent;
+import org.apache.hadoop.mapreduce.server.tasktracker.userlogs.JvmFinishedEvent;
+import org.apache.hadoop.mapreduce.server.tasktracker.userlogs.UserLogManager;
+import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
+import org.apache.hadoop.metrics2.util.MBeans;
 import org.apache.hadoop.net.DNS;
 import org.apache.hadoop.net.NetUtils;
+import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.authorize.PolicyProvider;
 import org.apache.hadoop.security.authorize.ServiceAuthorizationManager;
-import org.apache.hadoop.util.DiskChecker;
-import org.apache.hadoop.util.MemoryCalculatorPlugin;
-import org.apache.hadoop.util.ResourceCalculatorPlugin;
-import org.apache.hadoop.util.ProcfsBasedProcessTree;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
+import org.apache.hadoop.util.DiskChecker;
+import org.apache.hadoop.util.DiskChecker.DiskErrorException;
+import org.apache.hadoop.util.MemoryCalculatorPlugin;
+import org.apache.hadoop.util.ProcfsBasedProcessTree;
 import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.hadoop.util.ResourceCalculatorPlugin;
+import org.apache.hadoop.util.Shell.ShellCommandExecutor;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.VersionInfo;
-import org.apache.hadoop.util.DiskChecker.DiskErrorException;
-import org.apache.hadoop.util.Shell.ShellCommandExecutor;
-import org.apache.hadoop.mapreduce.security.TokenCache;
-import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
-import org.apache.hadoop.metrics2.util.MBeans;
-import org.apache.hadoop.security.Credentials;
+import org.ucare.cpn.annotations.*;
 
 /*******************************************************
  * TaskTracker is a process that starts and tracks MR Tasks
@@ -119,6 +125,7 @@ import org.apache.hadoop.security.Credentials;
  * for Task assignments and reporting results.
  *
  *******************************************************/
+
 public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
     Runnable, TaskTrackerMXBean {
   
@@ -262,6 +269,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
    * rpc calls fails for whatever reason, the previous status report is sent
    * again.
    */
+  @SharedData
   TaskTrackerStatus status = null;
   
   // The system-directory on HDFS where job files are stored 
@@ -273,7 +281,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   private final HttpServer server;
     
   volatile boolean shuttingDown = false;
-    
+  
   Map<TaskAttemptID, TaskInProgress> tasks = new HashMap<TaskAttemptID, TaskInProgress>();
   /**
    * Map from taskId -> TaskInProgress.
@@ -1203,7 +1211,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   private static LocalDirAllocator lDirAlloc = 
                               new LocalDirAllocator("mapred.local.dir");
 
-  // intialize the job directory
+	// Initialize the job directory
+	// thanh: this is where thing messed up.
+	// Since many thread can called this method
   RunningJob localizeJob(TaskInProgress tip) 
   throws IOException, InterruptedException {
     Task t = tip.getTask();
@@ -1308,6 +1318,8 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
       * is also set up here.
       * To support potential authenticated HDFS accesses, we need the tokens
       */
+		// thanh: prepare for the job to run. Source of slowdown here.
+		// That can make localizeJob very slow.
     rjob.ugi.doAs(new PrivilegedExceptionAction<Object>() {
       public Object run() throws IOException, InterruptedException {
         try {
@@ -1317,6 +1329,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
             getTrackerDistributedCacheManager()
            .newTaskDistributedCacheManager(jobId, localJobConf);
           rjob.distCacheMgr = taskDistributedCacheManager;
+					// thanh: setupCache will download any necessary files.
           taskDistributedCacheManager.setupCache(localJobConf,
             TaskTracker.getPublicDistributedCacheDir(),
             TaskTracker.getPrivateDistributedCacheDir(userName));
@@ -2432,7 +2445,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
     //that estimate isn't currently being passed down to the TaskTrackers    
     return biggestSeenSoFar;
   }
-    
+  
   private TaskLauncher mapLauncher;
   private TaskLauncher reduceLauncher;
   public JvmManager getJvmManagerInstance() {
@@ -2455,6 +2468,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   class TaskLauncher extends Thread {
     private IntWritable numFreeSlots;
     private final int maxSlots;
+    @SharedData
     private List<TaskInProgress> tasksToLaunch;
 
     public TaskLauncher(TaskType taskType, int numSlots) {
@@ -2498,14 +2512,22 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
       }
     }
 
+    @DirectParent(signatures={"org.apache.hadoop.mapred.TaskTracker.initialize",
+    		"org.apache.hadoop.mapred.TaskTracker$TaskLauncher.addToTaskQueue"}, isJump = true)
     public void run() {
-      while (!Thread.interrupted()) {
+    	boolean movingOn;
+    	boolean isInterupted = Thread.interrupted();
+      while (!isInterupted) {
+          movingOn = true;    	  
         try {
           TaskInProgress tip;
           Task task;
+        	  
           synchronized (tasksToLaunch) {
-            while (tasksToLaunch.isEmpty()) {
+        	boolean taskEmpty = tasksToLaunch.isEmpty();
+            while (taskEmpty) {
               tasksToLaunch.wait();
+              taskEmpty = tasksToLaunch.isEmpty();
             }
             //get the TIP
             tip = tasksToLaunch.remove(0);
@@ -2514,9 +2536,10 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
                      " which needs " + task.getNumSlotsRequired() + " slots");
           }
           //wait for free slots to run
+          boolean canLaunch = true;
           synchronized (numFreeSlots) {
-            boolean canLaunch = true;
-            while (numFreeSlots.get() < task.getNumSlotsRequired()) {
+            boolean validLoop = (numFreeSlots.get() < task.getNumSlotsRequired());
+            while (validLoop) {
               //Make sure that there is no kill task action for this task!
               //We are not locking tip here, because it would reverse the
               //locking order!
@@ -2532,22 +2555,31 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
                     + " as it got killed externally. Task's state is "
                     + tip.getRunState());
                 canLaunch = false;
-                break;
+                //break;
+                validLoop = false;
               }
+              if (!validLoop){
               LOG.info("TaskLauncher : Waiting for " + task.getNumSlotsRequired() + 
                        " to launch " + task.getTaskID() + ", currently we have " + 
                        numFreeSlots.get() + " free slots");
               numFreeSlots.wait();
+              }
+              boolean tmp = (numFreeSlots.get() < task.getNumSlotsRequired());
+              validLoop = tmp && validLoop;
             }
             if (!canLaunch) {
-              continue;
+              //continue;
+            	movingOn = false;
             }
+            if (movingOn){
             LOG.info("In TaskLauncher, current free slots : " + numFreeSlots.get()+
                      " and trying to launch "+tip.getTask().getTaskID() + 
                      " which needs " + task.getNumSlotsRequired() + " slots");
             numFreeSlots.set(numFreeSlots.get() - task.getNumSlotsRequired());
-            assert (numFreeSlots.get() >= 0);
+            //assert (numFreeSlots.get() >= 0);
+            }
           }
+          if (movingOn){
           synchronized (tip) {
             //to make sure that there is no kill task action for this
             if (!tip.canBeLaunched()) {
@@ -2555,21 +2587,26 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
               LOG.info("Not launching task " + task.getTaskID() + " as it got"
                 + " killed externally. Task's state is " + tip.getRunState());
               addFreeSlots(task.getNumSlotsRequired());
-              continue;
+              //continue;
+              movingOn = false;
             }
-            tip.slotTaken = true;
+            if (movingOn)
+            	tip.slotTaken = true;
           }
           //got a free slot. launch the task
-          startNewTask(tip);
+          	if (movingOn)
+          		startNewTask(tip);
+          }          
         } catch (InterruptedException e) { 
           return; // ALL DONE
         } catch (Throwable th) {
           LOG.error("TaskLauncher error " + 
               StringUtils.stringifyException(th));
         }
+        isInterupted = Thread.interrupted();
       }
     }
-  }
+  }                                                                                                                                                                                                                                                        
   private TaskInProgress registerTask(LaunchTaskAction action, 
       TaskLauncher launcher) {
     Task t = action.getTask();
@@ -2598,6 +2635,8 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   void startNewTask(final TaskInProgress tip) throws InterruptedException {
     Thread launchThread = new Thread(new Runnable() {
       @Override
+      @DirectParent(signatures={
+    		  "org.apache.hadoop.mapred.TaskTracker.startNewTask"})
       public void run() {
         try {
           RunningJob rjob = localizeJob(tip);
@@ -2842,6 +2881,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
     /**
      * Kick off the task execution
      */
+    @PatternBlock(path="patterns/pt-TaskAssignment_v1.cpn")
+    @LookupPoint(isAtomic = true, defColor="NODE", defVar="tt")
+    @AbstractSharedData(dataName = "Task", type = "get", accessTime="end")
     public synchronized void launchTask(RunningJob rjob) throws IOException {
       if (this.taskStatus.getRunState() == TaskStatus.State.UNASSIGNED ||
           this.taskStatus.getRunState() == TaskStatus.State.FAILED_UNCLEAN ||
@@ -2852,6 +2894,13 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
         }
         setTaskRunner(task.createRunner(TaskTracker.this, this, rjob));
         this.runner.start();
+        
+        // riza: hack to MapTaskRunner
+        if ("a".equals("b")){
+        	MapTaskRunner mtr = new MapTaskRunner(null,null,null,null);
+        	mtr.run();
+        }
+        
         long now = System.currentTimeMillis();
         this.taskStatus.setStartTime(now);
         this.lastProgressReport = now;
@@ -3779,6 +3828,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   /**
    *  The datastructure for initializing a job
    */
+  @TokenClass
   static class RunningJob{
     private JobID jobid; 
     private JobConf jobConf;
@@ -3835,7 +3885,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   String getName() {
     return taskTrackerName;
   }
-    
+
   private synchronized List<TaskStatus> cloneAndResetRunningTaskStatuses(
                                           boolean sendCounters) {
     List<TaskStatus> result = new ArrayList<TaskStatus>(runningTasks.size());
@@ -3922,6 +3972,7 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   /**
    * Start the TaskTracker, point toward the indicated JobTracker
    */
+  @EntryPoint
   public static void main(String argv[]) throws Exception {
     StringUtils.startupShutdownMessage(TaskTracker.class, argv, LOG);
     if (argv.length != 0) {

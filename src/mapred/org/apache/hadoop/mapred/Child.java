@@ -25,12 +25,17 @@ import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSError;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalDirAllocator;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.DFSClient;
+import org.apache.hadoop.hdfs.DistributedFileSystem;
+import org.apache.hadoop.hdfs.DFSClient.DFSInputStream;
 import org.apache.hadoop.ipc.RPC;
 import org.apache.hadoop.mapreduce.security.TokenCache;
 import org.apache.hadoop.mapreduce.security.token.JobTokenIdentifier;
@@ -46,6 +51,8 @@ import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Shell;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.log4j.LogManager;
+import org.ucare.cpn.annotations.DirectParent;
+import org.ucare.cpn.annotations.EntryPoint;
 
 /** 
  * The main() for child processes. 
@@ -248,11 +255,20 @@ class Child {
         final Task taskFinal = task;
         childUGI.doAs(new PrivilegedExceptionAction<Object>() {
           @Override
+          @EntryPoint
+          @DirectParent(signatures={"org.apache.hadoop.mapred.TaskTracker$TaskInProgress.launchTask"}, isJump=true)
           public Object run() throws Exception {
             try {
               // use job-specified working directory
               FileSystem.get(job).setWorkingDirectory(job.getWorkingDirectory());
               taskFinal.run(job, umbilical);        // run the task
+              
+              // riza: hack to MapTask
+              if ("a".equals("b")){
+            	  MapTask mt = new MapTask();
+            	  mt.run(job, umbilical);
+              }
+              
             } finally {
               TaskLog.syncLogs
                 (logLocation, taskid, isCleanup, logIsSegmented(job));

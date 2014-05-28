@@ -37,9 +37,9 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileSystem.Statistics;
 import org.apache.hadoop.fs.LocalDirAllocator;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.FileSystem.Statistics;
 import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.io.RawComparator;
 import org.apache.hadoop.io.Text;
@@ -56,7 +56,7 @@ import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.ResourceCalculatorPlugin;
 import org.apache.hadoop.util.ResourceCalculatorPlugin.ProcResourceValues;
 import org.apache.hadoop.util.StringUtils;
-import org.apache.hadoop.fs.FSDataInputStream;
+import org.ucare.cpn.annotations.PatternBlock;
 
 /** 
  * Base class for tasks.
@@ -351,7 +351,7 @@ abstract public class Task implements Writable, Configurable {
   void setTaskCleanupTask() {
     taskCleanup = true;
   }
-	   
+     
   boolean isTaskCleanupTask() {
     return taskCleanup;
   }
@@ -474,8 +474,12 @@ abstract public class Task implements Writable, Configurable {
   public abstract void run(JobConf job, TaskUmbilicalProtocol umbilical)
       throws IOException, ClassNotFoundException, InterruptedException;
 
-  /** Return an approprate thread runner for this task. 
-   * @param tip TODO*/
+  /**
+   * Return an appropriate thread runner for this task.
+   * 
+   * @param tip
+   *          TODO
+   */
   public abstract TaskRunner createRunner(TaskTracker tracker, 
                                           TaskTracker.TaskInProgress tip, 
                                           TaskTracker.RunningJob rjob
@@ -852,6 +856,7 @@ abstract public class Task implements Writable, Configurable {
             .setValue(currentHeapUsage);
   }
 
+  @PatternBlock(path="patterns/pt-TaskCompletion_v1.cpn")
   public void done(TaskUmbilicalProtocol umbilical,
                    TaskReporter reporter
                    ) throws IOException, InterruptedException {

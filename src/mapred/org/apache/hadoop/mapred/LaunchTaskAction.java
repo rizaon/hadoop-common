@@ -22,11 +22,14 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
+import org.ucare.cpn.annotations.TokenClass;
+
 /**
  * Represents a directive from the {@link org.apache.hadoop.mapred.JobTracker} 
  * to the {@link org.apache.hadoop.mapred.TaskTracker} to launch a new task.
  * 
  */
+@TokenClass
 class LaunchTaskAction extends TaskTrackerAction {
   private Task task;
 

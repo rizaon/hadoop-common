@@ -20,7 +20,9 @@ package org.apache.hadoop.mapred;
 
 import java.io.IOException;
 
+import org.apache.hadoop.mapred.Task.TaskReporter;
 import org.apache.hadoop.util.ReflectionUtils;
+import org.ucare.cpn.annotations.LookupPoint;
 
 /** Default {@link MapRunnable} implementation.*/
 public class MapRunner<K1, V1, K2, V2>
