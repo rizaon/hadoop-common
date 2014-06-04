@@ -53,6 +53,7 @@ import org.apache.hadoop.util.StringUtils;
 import org.apache.log4j.LogManager;
 import org.ucare.cpn.annotations.DirectParent;
 import org.ucare.cpn.annotations.EntryPoint;
+import org.ucare.cpn.annotations.PatternBlock;
 
 /** 
  * The main() for child processes. 
@@ -256,6 +257,7 @@ class Child {
         childUGI.doAs(new PrivilegedExceptionAction<Object>() {
           @Override
           @EntryPoint
+          @PatternBlock(path="patterns/pt-BlockingProcess_v1.cpn")
           @DirectParent(signatures={"org.apache.hadoop.mapred.TaskTracker$TaskInProgress.launchTask"}, isJump=true)
           public Object run() throws Exception {
             try {

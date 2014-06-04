@@ -856,7 +856,7 @@ abstract public class Task implements Writable, Configurable {
             .setValue(currentHeapUsage);
   }
 
-  @PatternBlock(path="patterns/pt-TaskCompletion_v1.cpn")
+  @PatternBlock(path="patterns/pt-TaskCompletion_v2.cpn")
   public void done(TaskUmbilicalProtocol umbilical,
                    TaskReporter reporter
                    ) throws IOException, InterruptedException {

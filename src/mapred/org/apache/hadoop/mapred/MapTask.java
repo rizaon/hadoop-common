@@ -74,6 +74,7 @@ import org.apache.hadoop.util.QuickSort;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.StringUtils;
 import org.ucare.cpn.annotations.LookupPoint;
+import org.ucare.cpn.annotations.PatternBlock;
 
 /** A Map task. */
 class MapTask extends Task {
@@ -339,6 +340,7 @@ class MapTask extends Task {
     }
   }
 
+
   @Override
   public void run(final JobConf job, final TaskUmbilicalProtocol umbilical) 
     throws IOException, ClassNotFoundException, InterruptedException {
@@ -373,20 +375,20 @@ class MapTask extends Task {
     }
     done(umbilical, reporter);
   }
-  @LookupPoint(defColor="PID", defVar="(tt, task)")
+//  @LookupPoint(defColor="PID", defVar="(tt, task)")
   @SuppressWarnings("unchecked")
   private <T> T getSplitDetails(Path file, long offset)
    throws IOException {
 	  byte[] buff = new byte[100];
 
    // riza: hack to call DistributedFileSystem
-		if ("a".equals("b")) {
-			//DistributedFileSystem fs = new DistributedFileSystem();
-			//FSDataInputStream inFile = fs.open(null);
-			DFSClient dfs = new DFSClient(null);
-			DFSInputStream ins = dfs.open("");
-			ins.read(buff, 10, 100);
-		}
+//		if ("a".equals("b")) {
+//			//DistributedFileSystem fs = new DistributedFileSystem();
+//			//FSDataInputStream inFile = fs.open(null);
+//			DFSClient dfs = new DFSClient(null);
+//			DFSInputStream ins = dfs.open("");
+//			ins.read(buff, 10, 100);
+//		}
 		
 	FileSystem fs = file.getFileSystem(conf);
 	FSDataInputStream inFile = fs.open(file);
